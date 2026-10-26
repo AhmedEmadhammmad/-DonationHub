@@ -1,0 +1,2 @@
+// Vertical Slice for Authentication & Identity feature (Registration, Login, Tokens, User Profile)
+namespace DonationHub.Application.Features.Auth;

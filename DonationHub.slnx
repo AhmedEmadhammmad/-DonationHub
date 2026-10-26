@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DonationHub.Domain/DonationHub.Domain.csproj" />
+    <Project Path="src/DonationHub.Application/DonationHub.Application.csproj" />
+    <Project Path="src/DonationHub.Infrastructure/DonationHub.Infrastructure.csproj" />
+    <Project Path="src/DonationHub.Api/DonationHub.Api.csproj" />
+  </Folder>
+</Solution>

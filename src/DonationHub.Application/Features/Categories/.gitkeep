@@ -1,0 +1,2 @@
+// Vertical Slice for Categories feature (List, GetById, Create, Update, Delete)
+namespace DonationHub.Application.Features.Categories;
