@@ -26,3 +26,9 @@ packages/
 *.log
 *.tmp
 *.temp
+
+# VS Code C# Dev Tools - Auto-generated runners
+.vscodecsdt/Runners/
+
+# Antigravity notes and study guides
+.antigravity/
