@@ -4,8 +4,14 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace DonationHub.Infrastructure.Persistence.Configurations;
 
+/// <summary>
+/// Entity Framework Core Fluent API mapping configuration for the Campaign entity.
+/// </summary>
 public class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
 {
+    /// <summary>
+    /// Configures table schema, constraints, soft delete filter, and foreign key relations for Campaign.
+    /// </summary>
     public void Configure(EntityTypeBuilder<Campaign> builder)
     {
         builder.ToTable("Campaigns");
@@ -54,6 +60,9 @@ public class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
             .IsRequired();
 
         builder.Property(c => c.DeletedAtUtc);
+
+
+        builder.HasQueryFilter(c => !c.IsDeleted);
 
         // Optimistic Concurrency Token
         builder.Property(c => c.RowVersion)

@@ -1,10 +1,17 @@
+using DonationHub.Application.Common.Interfaces;
 using DonationHub.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace DonationHub.Infrastructure.Persistence;
 
-public class AppDbContext : DbContext
+/// <summary>
+/// Primary Entity Framework Core database context implementing IAppDbContext for read and write operations.
+/// </summary>
+public class AppDbContext : DbContext, IAppDbContext
 {
+    /// <summary>
+    /// Initializes a new database context instance with configured options.
+    /// </summary>
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
     }
@@ -18,11 +25,13 @@ public class AppDbContext : DbContext
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents => Set<ProcessedStripeEvent>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
+    /// <summary>
+    /// Applies entity configurations discovered from the persistence assembly.
+    /// </summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // تطبيق جميع إعدادات الـ Fluent API المسجلة في هذا الـ Assembly تلقائياً
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
 }

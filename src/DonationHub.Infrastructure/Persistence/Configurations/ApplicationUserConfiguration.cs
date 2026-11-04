@@ -30,6 +30,13 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
             .HasMaxLength(150)
             .IsRequired();
 
+        builder.Property(u => u.PasswordHash)
+            .IsRequired();
+
+        builder.Property(u => u.Role)
+            .HasMaxLength(50)
+            .IsRequired();
+
         builder.Property(u => u.PreferredLanguage)
             .HasMaxLength(10)
             .IsRequired();

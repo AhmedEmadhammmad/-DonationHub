@@ -1,12 +1,20 @@
+using DonationHub.Application.Features.Auth.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DonationHub.Application;
 
+/// <summary>
+/// Registers application layer services and use case handlers.
+/// </summary>
 public static class DependencyInjection
 {
+    /// <summary>
+    /// Configures application core services.
+    /// </summary>
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
-        // Application layer services registration (e.g. MediatR / Handlers, Validators, Mappers)
+        services.AddScoped<IAuthService, AuthService>();
+
         return services;
     }
 }
