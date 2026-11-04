@@ -20,3 +20,4 @@ public class LoginRequestDto
     [Required(ErrorMessage = "Password is required.")]
     public string Password { get; init; } = string.Empty;
 }
+

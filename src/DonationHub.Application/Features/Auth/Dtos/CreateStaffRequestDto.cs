@@ -42,3 +42,4 @@ public class CreateStaffRequestDto
     [RegularExpression(@"^(ar|en)$", ErrorMessage = "PreferredLanguage must be 'ar' or 'en'.")]
     public string PreferredLanguage { get; init; } = "ar";
 }
+

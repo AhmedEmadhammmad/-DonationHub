@@ -30,3 +30,4 @@ public class AuthResponseDto
     /// </summary>
     public AuthUserDto User { get; init; } = default!;
 }
+

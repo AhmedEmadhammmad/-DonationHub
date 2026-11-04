@@ -22,3 +22,4 @@ public interface ITokenService
     /// </summary>
     string HashToken(string rawToken);
 }
+

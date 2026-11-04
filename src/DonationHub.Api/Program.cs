@@ -1,4 +1,5 @@
 using System.Text;
+using DonationHub.Api.Extensions;
 using DonationHub.Application;
 using DonationHub.Application.Common.Options;
 using DonationHub.Infrastructure;
@@ -82,6 +83,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 // Seed default Administrator account if not present (Task 7: IDN-11)
-await IdentityDataSeeder.SeedAsync(app.Services);
+await app.SeedAdminUserAsync();
 
 app.Run();

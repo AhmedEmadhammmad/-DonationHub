@@ -13,3 +13,4 @@ public class RefreshTokenRequestDto
     [Required(ErrorMessage = "RefreshToken is required.")]
     public string RefreshToken { get; init; } = string.Empty;
 }
+
