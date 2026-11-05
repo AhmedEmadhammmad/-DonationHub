@@ -3,6 +3,8 @@ using DonationHub.Application.Features.Categories.Dtos;
 using DonationHub.Application.Features.Categories.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 
 namespace DonationHub.Api.Controllers;
 
@@ -46,6 +48,14 @@ public class CategoriesController : ControllerBase
             {
                 error = CategoryDuplicateNameException.ErrorCode,
                 message = ex.Message
+            });
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            return Conflict(new
+            {
+                error = CategoryDuplicateNameException.ErrorCode,
+                message = "A category with the same Arabic or English name already exists."
             });
         }
     }
@@ -120,6 +130,14 @@ public class CategoriesController : ControllerBase
                 message = ex.Message
             });
         }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            return Conflict(new
+            {
+                error = CategoryDuplicateNameException.ErrorCode,
+                message = "A category with the same Arabic or English name already exists."
+            });
+        }
     }
 
     /// <summary>
@@ -156,5 +174,8 @@ public class CategoriesController : ControllerBase
             });
         }
     }
+
+    private static bool IsUniqueViolation(DbUpdateException ex)
+        => ex.InnerException is SqlException { Number: 2601 or 2627 };
 }
 

@@ -104,4 +104,64 @@ public static class MigrationExtensions
             logger?.LogInformation("Successfully seeded default bilingual categories.");
         }
     }
+
+    /// <summary>
+    /// Seeds development-only accounts (Campaign Manager + Donor) — Sprint 1 deliverable.
+    /// Uses the configured development password; never hard-coded.
+    /// </summary>
+    public static async Task SeedDevelopmentDataAsync(this WebApplication app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        if (!app.Environment.IsDevelopment())
+        {
+            return;
+        }
+
+        using var scope = app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        var adminOptions = scope.ServiceProvider.GetRequiredService<IOptions<SeedAdminOptions>>().Value;
+        var logger = scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(nameof(MigrationExtensions));
+
+        if (string.IsNullOrWhiteSpace(adminOptions.Password))
+        {
+            logger?.LogWarning("Dev seed skipped: SeedAdmin:Password is not configured.");
+            return;
+        }
+
+        var devUsers = new (string Email, string FullName, string Role, string Lang)[]
+        {
+            ("campaign.manager@donationhub.org", "Campaign Manager", ApplicationUser.RoleCampaignManager, "en"),
+            ("donor@donationhub.org",            "Demo Donor",       ApplicationUser.RoleDonor,           "ar")
+        };
+
+        var addedAny = false;
+        foreach (var (email, fullName, role, lang) in devUsers)
+        {
+            if (await context.Users.AnyAsync(u => u.Email == email))
+            {
+                continue;
+            }
+
+            var user = ApplicationUser.Create(
+                id: Guid.NewGuid(),
+                email: email,
+                userName: email,
+                fullName: fullName,
+                passwordHash: passwordHasher.HashPassword(adminOptions.Password),
+                nowUtc: DateTime.UtcNow,
+                role: role,
+                preferredLanguage: lang);
+
+            await context.Users.AddAsync(user);
+            addedAny = true;
+        }
+
+        if (addedAny)
+        {
+            await context.SaveChangesAsync();
+            logger?.LogInformation("Successfully seeded development users (CampaignManager + Donor).");
+        }
+    }
 }

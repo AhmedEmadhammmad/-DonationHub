@@ -173,6 +173,7 @@ public class AuthService : IAuthService
         var (newRawRefreshToken, newTokenHash) = _tokenService.GenerateRefreshToken();
         var newExpiresAtUtc = nowUtc.AddDays(_jwtOptions.RefreshTokenExpiryDays);
 
+        // 6. Rotate atomically: only ONE concurrent request may claim the token (single-use)
         var newRefreshToken = RefreshToken.Create(
             id: Guid.NewGuid(),
             userId: user.Id,
@@ -180,11 +181,31 @@ public class AuthService : IAuthService
             nowUtc: nowUtc,
             expiresAtUtc: newExpiresAtUtc);
 
-        // 6. Rotate: revoke old token and record replacement link (IDN-06)
-        storedToken.Revoke(nowUtc, replacedByTokenId: newRefreshToken.Id);
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var claimed = await _context.RefreshTokens
+                .Where(t => t.Id == storedToken.Id && t.RevokedAt == null)
+                .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(t => t.RevokedAt, nowUtc)
+                        .SetProperty(t => t.ReplacedByTokenId, newRefreshToken.Id),
+                    cancellationToken);
 
-        await _refreshTokenRepository.AddAsync(newRefreshToken, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+            if (claimed == 0)
+            {
+                // Another concurrent request already claimed this token — replay attempt
+                throw new InvalidRefreshTokenException();
+            }
+
+            await _refreshTokenRepository.AddAsync(newRefreshToken, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
 
         return new AuthResponseDto
         {

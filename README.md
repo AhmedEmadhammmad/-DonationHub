@@ -6,7 +6,7 @@
 [![OpenAPI & Scalar](https://img.shields.io/badge/API%20Docs-Scalar-blue?logo=openapi-initiative)](https://scalar.com)
 [![Tawjeh Bootcamp](https://img.shields.io/badge/Tawjeh-Sprint%201%20Foundation-orange)](https://tawjeh.net)
 
-DonationHub is an enterprise-grade crowdfunding platform designed for humanitarian relief campaigns, built with modern **.NET 10**, **C# 13/14**, **Entity Framework Core 10**, and **SQL Server**. The solution strictly adheres to **Clean Architecture** principles and **Vertical Slices**, enforcing a rich domain model with 10 business invariants, robust identity and security mechanisms (JWT + Refresh Token rotation), soft-delete interceptors, fail-fast options validation, and interactive API documentation powered by **Scalar** and **OpenAPI**.
+DonationHub is an enterprise-grade crowdfunding platform designed for humanitarian relief campaigns, built with modern **.NET 10**, **C# 13/14**, **Entity Framework Core 10**, and **SQL Server**. The solution strictly adheres to **Clean Architecture** principles and **Vertical Slices**, enforcing a rich domain model with 10 business invariants, robust identity and security mechanisms (JWT + Refresh Token rotation with atomic single-use protection), soft-delete interceptors, fail-fast options validation, and interactive API documentation powered by **Scalar** and **OpenAPI**.
 
 ---
 
@@ -30,15 +30,15 @@ graph TD
 
 ### Layer Details:
 1. **`DonationHub.Domain` (Core / Zero Dependencies)**
-   - Enterprise entities (`Campaign`, `Donation`, `User`, `Category`, `AuditLog`, `Organization`, `CampaignUpdate`, `RefreshToken`).
-   - Enums (`Role`, `CampaignStatus`, `DonationStatus`).
-   - Value Objects (`Money`).
+   - Domain entities: `ApplicationUser`, `RefreshToken`, `Category`, `Campaign`, `Donation`.
+   - Domain Value Objects (`Money`).
+   - Domain Contracts (`ISoftDeletable`).
    - Pure business invariants enforced with private setters and expressive domain methods.
    - Zero external library dependencies (no EF Core, no ASP.NET Core).
 
 2. **`DonationHub.Application` (Business Logic & Vertical Slices)**
    - Slices organized by feature: `Features/Auth`, `Features/Categories`, `Features/Users`, `Features/Campaigns`.
-   - Interfaces for abstractions: `IAppDbContext`, `IGenericRepository<T>`, `IUnitOfWork`, `IPasswordHasher`, `ITokenService`, `ICategoryService`.
+   - Interfaces for abstractions: `IAppDbContext`, `IGenericRepository<T>`, `IUnitOfWork`, `IPasswordHasher`, `ITokenService`, `IAuthService`, `ICategoryService`.
    - DTOs and Request/Response contracts.
    - Strongly-typed Options classes (`JwtOptions`, `SeedAdminOptions`, `DonationOptions`).
    - Domain and Business Exceptions.
@@ -47,7 +47,7 @@ graph TD
    - EF Core `AppDbContext` and Fluent API Entity Type Configurations.
    - `DeleteBehavior.Restrict` configured on critical relationships to prevent accidental cascades.
    - Concurrency token (`Campaign.RowVersion` / `IsRowVersion()`) for optimistic locking.
-   - `SoftDeleteInterceptor` automatically setting `IsDeleted = true` and `DeletedAtUtc`.
+   - `SoftDeleteInterceptor` automatically intercepting `EntityState.Deleted` and setting `IsDeleted = true` and `DeletedAtUtc`.
    - Security implementations: PBKDF2 password hashing with salt, cryptographically secure random token generation, SHA-256 refresh token hashing.
    - Unit of Work and Generic Repository implementation with transaction coordination.
 
@@ -55,7 +55,7 @@ graph TD
    - Thin ASP.NET Core Web API controllers (`AuthController`, `AdminController`, `CategoriesController`).
    - Scalar API Reference integration (`MapScalarApiReference`) with Bearer Security Scheme Transformer (`IOpenApiDocumentTransformer`).
    - Fail-fast Options pattern (`ValidateDataAnnotations()`, `ValidateOnStart()`).
-   - Database migration and startup seeding extensions (`SeedAdminUserAsync`, `SeedDefaultCategoriesAsync`).
+   - Database migration and startup seeding extensions (`SeedAdminUserAsync`, `SeedDefaultCategoriesAsync`, `SeedDevelopmentDataAsync`).
 
 ---
 
@@ -106,21 +106,21 @@ cd src/DonationHub.Api
 # 1. Connection String to SQL Server LocalDB
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=(localdb)\\mssqllocaldb;Database=DonationHubDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
 
-# 2. JWT Authentication Secrets (SecretKey must be at least 32 characters)
-dotnet user-secrets set "JwtOptions:SecretKey" "DonationHub_Super_Secret_Key_Sprint1_2026_Minimum_32_Characters!"
-dotnet user-secrets set "JwtOptions:Issuer" "DonationHub"
-dotnet user-secrets set "JwtOptions:Audience" "DonationHubClient"
-dotnet user-secrets set "JwtOptions:AccessTokenExpirationMinutes" "15"
-dotnet user-secrets set "JwtOptions:RefreshTokenExpirationDays" "7"
+# 2. JWT Authentication Secrets (section name = "Jwt")
+dotnet user-secrets set "Jwt:SecretKey" "DonationHub_Super_Secret_Key_Sprint1_2026_Minimum_32_Characters!"
+dotnet user-secrets set "Jwt:Issuer" "DonationHub"
+dotnet user-secrets set "Jwt:Audience" "DonationHubApp"
+dotnet user-secrets set "Jwt:ExpiryMinutes" "15"
+dotnet user-secrets set "Jwt:RefreshTokenExpiryDays" "7"
 
-# 3. Initial Administrator Seed Credentials
-dotnet user-secrets set "SeedAdminOptions:Email" "admin@donationhub.org"
-dotnet user-secrets set "SeedAdminOptions:Password" "Admin@123456!"
-dotnet user-secrets set "SeedAdminOptions:FullName" "System Administrator"
+# 3. Initial Administrator Seed Credentials (section name = "SeedAdmin")
+dotnet user-secrets set "SeedAdmin:Email" "admin@donationhub.org"
+dotnet user-secrets set "SeedAdmin:Password" "Admin@StrongPassword2026!"
+dotnet user-secrets set "SeedAdmin:FullName" "Platform Administrator"
 
-# 4. Global Donation Business Boundaries
-dotnet user-secrets set "DonationOptions:MinDonationAmount" "5"
-dotnet user-secrets set "DonationOptions:MaxDonationAmount" "100000"
+# 4. Global Donation Business Boundaries (section name = "Donations")
+dotnet user-secrets set "Donations:MinAmount" "1.00"
+dotnet user-secrets set "Donations:MaxAmount" "10000.00"
 ```
 
 ---
@@ -134,8 +134,11 @@ dotnet ef database update --project src/DonationHub.Infrastructure --startup-pro
 ```
 
 ### 2. Automatic Seeding on Startup:
-When the application starts, it automatically executes two seeding routines:
-- **Default Administrator Account:** Seeds `admin@donationhub.org` with role `Admin` if not already present.
+When the application starts, it automatically executes seeding routines:
+- **Default Administrator Account:** Seeds `admin@donationhub.org` with role `Admin` using configured `SeedAdmin` options.
+- **Development Seed Accounts (Sprint 1 Deliverable):** In Development environment, seeds:
+  - `campaign.manager@donationhub.org` (Role: `CampaignManager`)
+  - `donor@donationhub.org` (Role: `Donor`)
 - **5 Default Bilingual Categories:** Seeds 5 core humanitarian categories:
   1. Health (صحة)
   2. Education (تعليم)
@@ -167,7 +170,7 @@ Open your browser and navigate to:
    ```json
    {
      "email": "admin@donationhub.org",
-     "password": "Admin@123456!"
+     "password": "Admin@StrongPassword2026!"
    }
    ```
 3. Copy the returned `accessToken`.
@@ -186,20 +189,21 @@ The following architectural decisions are deliberately designed to ensure high p
 - **Reads:** Direct DbContext projection with `.AsNoTracking()` to DTOs. Bypasses entity change tracking overhead and snapshot allocation, achieving maximum read throughput and lower garbage collection (GC) pressure.
 
 ### 2. Rich Domain Model vs. Anemic Domain Model
-- All domain rules and invariants are encapsulated within domain entities (`Campaign`, `Donation`, `User`, `Category`).
+- All domain rules and invariants are encapsulated within domain entities (`Campaign`, `Donation`, `ApplicationUser`, `Category`).
 - All entity property setters are `private` or `protected`.
 - Entities can only be mutated through explicit, business-meaningful methods (`Activate()`, `ReceiveDonation()`, `Cancel()`, etc.).
 - Value Objects (`Money`) encapsulate amount and currency validation, preventing invalid state instantiation anywhere in the system.
 
-### 3. SHA-256 Hashed Refresh Tokens & Replay Defense
+### 3. SHA-256 Hashed Refresh Tokens & Atomic Concurrency Protection
 - Refresh tokens are never stored in plaintext in the database.
 - A raw cryptographic random string is issued to the client, while its **SHA-256 hash** is stored in SQL Server.
-- **Token Family Rotation:** Each refresh token can only be used once. If an already-revoked or expired refresh token is presented (potential token theft/replay attack), the entire token chain for that user is immediately revoked.
+- **Atomic Rotation (Replay Attack Defense):** Single-use rotation is enforced atomically at the database level using `ExecuteUpdateAsync` within a transaction (`WHERE Id == @id AND RevokedAt IS NULL`). If concurrent requests attempt to reuse the same refresh token, only one succeeds and the other immediately fails with `401 Unauthorized (Auth.RefreshTokenInvalid)`.
 
 ### 4. Soft Delete Interceptor vs. Repository Filtering
-- Implemented via `ISoftDeletable` and an EF Core `SaveChangesInterceptor` (`SoftDeleteInterceptor`).
+- Implemented via `ISoftDeletable` on `Campaign` and `Category`, powered by EF Core `SaveChangesInterceptor` (`SoftDeleteInterceptor`).
 - Automatically intercepts `EntityState.Deleted` and converts it into `IsDeleted = true` and `DeletedAtUtc = DateTime.UtcNow`.
 - Combined with EF Core **Global Query Filters** (`builder.HasQueryFilter(e => !e.IsDeleted)`), ensuring developers never accidentally leak soft-deleted records across any query in the system.
+- Filtered unique indexes (`WHERE [IsDeleted] = 0`) allow categories to reuse names after soft deletion.
 
 ### 5. Invariant 10: Referential Integrity on Category Deletion
 - A category cannot be deleted if any campaigns are linked to it.
@@ -209,7 +213,7 @@ The following architectural decisions are deliberately designed to ensure high p
       .IgnoreQueryFilters()
       .AnyAsync(c => c.CategoryId == id, cancellationToken);
   ```
-  If campaigns exist, it returns `409 Conflict` with error code `Category.HasCampaigns`.
+  If campaigns exist, it maps directly to `409 Conflict` with error code `Category.HasCampaigns`.
 
 ### 6. Fail-Fast Options Validation
 - Registered options (`JwtOptions`, `SeedAdminOptions`, `DonationOptions`) use `.ValidateDataAnnotations()` and `.ValidateOnStart()`.
@@ -228,8 +232,8 @@ The following architectural decisions are deliberately designed to ensure high p
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/v1/auth/register` | Anonymous | Register a new Donor account |
 | `POST` | `/api/v1/auth/login` | Anonymous | Authenticate and obtain Access & Refresh tokens |
-| `POST` | `/api/v1/auth/refresh` | Anonymous | Rotate Refresh token and obtain new Access token |
-| `POST` | `/api/v1/auth/revoke` | Anonymous | Revoke an active Refresh token |
+| `POST` | `/api/v1/auth/refresh` | Anonymous | Rotate Refresh token and obtain new Access token (Atomic single-use) |
+| `POST` | `/api/v1/auth/logout` | Authenticated | Revoke an active Refresh token upon logout |
 | `GET` | `/api/v1/auth/me` | Authenticated | Retrieve profile details of authenticated user |
 
 ### 👑 Administration (`/api/v1/admin`)
@@ -244,7 +248,7 @@ The following architectural decisions are deliberately designed to ensure high p
 | `GET` | `/api/v1/categories/{id}` | Anonymous | Retrieve a specific category by ID |
 | `POST` | `/api/v1/categories` | `Role: Admin` | Create a new category (Enforces unique names) |
 | `PUT` | `/api/v1/categories/{id}` | `Role: Admin` | Update an existing category |
-| `DELETE` | `/api/v1/categories/{id}` | `Role: Admin` | Soft-delete a category (Guarded by Invariant 10) |
+| `DELETE` | `/api/v1/categories/{id}` | `Role: Admin` | Soft-delete a category (Guarded by Invariant 10, returns 409 if campaigns exist) |
 
 ---
 

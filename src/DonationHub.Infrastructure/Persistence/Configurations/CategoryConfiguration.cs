@@ -17,14 +17,16 @@ public class CategoryConfiguration : IEntityTypeConfiguration<Category>
             .IsRequired();
 
         builder.HasIndex(c => c.NameAr)
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
 
         builder.Property(c => c.NameEn)
             .HasMaxLength(Category.MaxNameLength)
             .IsRequired();
 
         builder.HasIndex(c => c.NameEn)
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
 
         builder.Property(c => c.DescriptionAr)
             .HasMaxLength(1000);
@@ -36,6 +38,15 @@ public class CategoryConfiguration : IEntityTypeConfiguration<Category>
             .IsRequired();
 
         builder.Property(c => c.UpdatedAt);
+
+        builder.Property(c => c.IsDeleted)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(c => c.DeletedAtUtc);
+
+        // Global query filter (Task 5)
+        builder.HasQueryFilter(c => !c.IsDeleted);
 
         // علاقة 1 إلى متعدد مع منع الحذف التعاقبي (DeleteBehavior.Restrict)
         builder.HasMany<Campaign>()

@@ -1,8 +1,9 @@
+using DonationHub.Domain.Common;
 using DonationHub.Domain.Exceptions;
 
 namespace DonationHub.Domain.Entities;
 
-public class Category
+public class Category : ISoftDeletable
 {
     public const int MaxNameLength = 100;
 
@@ -13,6 +14,16 @@ public class Category
     public string? DescriptionEn { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
+
+    /// <summary>
+    /// Soft deletion flag modified by SoftDeleteInterceptor.
+    /// </summary>
+    public bool IsDeleted { get; set; }
+
+    /// <summary>
+    /// Timestamp recording when soft deletion occurred.
+    /// </summary>
+    public DateTime? DeletedAtUtc { get; set; }
 
     private Category()
     {
@@ -39,7 +50,9 @@ public class Category
             DescriptionAr = descriptionAr?.Trim(),
             DescriptionEn = descriptionEn?.Trim(),
             CreatedAt = nowUtc,
-            UpdatedAt = null
+            UpdatedAt = null,
+            IsDeleted = false,
+            DeletedAtUtc = null
         };
     }
 

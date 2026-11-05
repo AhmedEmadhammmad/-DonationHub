@@ -2,6 +2,7 @@ using DonationHub.Application.Common.Exceptions;
 using DonationHub.Application.Common.Interfaces;
 using DonationHub.Application.Features.Categories.Dtos;
 using DonationHub.Domain.Entities;
+using DonationHub.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace DonationHub.Application.Features.Categories.Services;
@@ -181,10 +182,13 @@ public class CategoryService : ICategoryService
             .IgnoreQueryFilters()
             .AnyAsync(c => c.CategoryId == id, cancellationToken);
 
-        category.EnsureCanBeDeleted(hasCampaigns);
-
-        if (hasCampaigns)
+        try
         {
+            category.EnsureCanBeDeleted(hasCampaigns);
+        }
+        catch (DomainException)
+        {
+            // Translate the domain rule into the API contract required by CAT-04 (HTTP 409 Conflict)
             throw new CategoryHasCampaignsException(id);
         }
 

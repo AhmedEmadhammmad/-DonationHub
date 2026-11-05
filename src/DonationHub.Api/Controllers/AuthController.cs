@@ -4,6 +4,8 @@ using DonationHub.Application.Features.Auth.Dtos;
 using DonationHub.Application.Features.Auth.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 
 namespace DonationHub.Api.Controllers;
 
@@ -44,6 +46,14 @@ public class AuthController : ControllerBase
             {
                 error = DuplicateEmailException.ErrorCode,
                 message = ex.Message
+            });
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            return Conflict(new
+            {
+                error = DuplicateEmailException.ErrorCode,
+                message = "A user with the specified email address already exists."
             });
         }
     }
@@ -167,4 +177,7 @@ public class AuthController : ControllerBase
             });
         }
     }
+
+    private static bool IsUniqueViolation(DbUpdateException ex)
+        => ex.InnerException is SqlException { Number: 2601 or 2627 };
 }
