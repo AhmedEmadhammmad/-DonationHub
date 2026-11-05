@@ -54,5 +54,54 @@ public static class MigrationExtensions
             logger?.LogInformation("Successfully seeded default Admin account: {Email}", normalizedEmail);
         }
     }
-}
 
+    /// <summary>
+    /// Seeds the five default bilingual categories if missing in Development environment (SRS §9.1).
+    /// </summary>
+    public static async Task SeedDefaultCategoriesAsync(this WebApplication app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        using var scope = app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var logger = scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(nameof(MigrationExtensions));
+
+        var defaultCategories = new (string NameAr, string NameEn, string DescAr, string DescEn)[]
+        {
+            ("صحة", "Health", "دعم الرعاية الصحية والعمليات الجراحية", "Healthcare and medical assistance"),
+            ("تعليم", "Education", "دعم التعليم وبناء المدارس والمنح الدراسية", "Educational support and scholarships"),
+            ("إغاثة", "Relief", "الإغاثة العاجلة للمتضررين من الأزمات والكوارث", "Emergency relief for crisis-affected communities"),
+            ("أيتام", "Orphans", "كفالة ورعاية الأيتام وتوفير احتياجاتهم", "Orphan sponsorship and comprehensive care"),
+            ("بيئة", "Environment", "مشاريع حماية البيئة والتنمية المستدامة", "Environmental protection and sustainability")
+        };
+
+        var nowUtc = DateTime.UtcNow;
+        var addedAny = false;
+
+        foreach (var (nameAr, nameEn, descAr, descEn) in defaultCategories)
+        {
+            var exists = await context.Categories
+                .AnyAsync(c => c.NameAr == nameAr || c.NameEn == nameEn);
+
+            if (!exists)
+            {
+                var category = Category.Create(
+                    id: Guid.NewGuid(),
+                    nameAr: nameAr,
+                    nameEn: nameEn,
+                    nowUtc: nowUtc,
+                    descriptionAr: descAr,
+                    descriptionEn: descEn);
+
+                await context.Categories.AddAsync(category);
+                addedAny = true;
+            }
+        }
+
+        if (addedAny)
+        {
+            await context.SaveChangesAsync();
+            logger?.LogInformation("Successfully seeded default bilingual categories.");
+        }
+    }
+}

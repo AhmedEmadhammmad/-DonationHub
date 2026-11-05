@@ -84,5 +84,6 @@ app.MapControllers();
 
 // Seed default Administrator account if not present (Task 7: IDN-11)
 await app.SeedAdminUserAsync();
+await app.SeedDefaultCategoriesAsync();
 
 app.Run();

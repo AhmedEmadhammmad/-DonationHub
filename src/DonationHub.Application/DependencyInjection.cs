@@ -1,4 +1,5 @@
 using DonationHub.Application.Features.Auth.Services;
+using DonationHub.Application.Features.Categories.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DonationHub.Application;
@@ -14,6 +15,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<ICategoryService, CategoryService>();
 
         return services;
     }
