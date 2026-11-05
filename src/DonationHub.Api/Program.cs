@@ -1,5 +1,6 @@
 using System.Text;
 using DonationHub.Api.Extensions;
+using DonationHub.Api.Transformers;
 using DonationHub.Application;
 using DonationHub.Application.Common.Options;
 using DonationHub.Infrastructure;
@@ -63,7 +64,10 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+});
 
 var app = builder.Build();
 
@@ -71,7 +75,12 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.MapScalarApiReference();
+    app.MapScalarApiReference(options =>
+    {
+        options.WithTitle("DonationHub API - Sprint 1")
+               .EnablePersistentAuthentication()
+               .AddHttpAuthentication("Bearer", auth => auth.WithToken(string.Empty));
+    });
     app.MapGet("/", () => Results.Redirect("/scalar/v1"));
 }
 
