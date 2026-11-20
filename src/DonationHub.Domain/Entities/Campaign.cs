@@ -83,6 +83,41 @@ public class Campaign : ISoftDeletable
         };
     }
 
+    public void Update(
+        string titleAr,
+        string titleEn,
+        string descriptionAr,
+        string descriptionEn,
+        decimal newGoalAmount,
+        DateTime newEndDateUtc,
+        Guid newCategoryId,
+        DateTime nowUtc)
+    {
+        EnsureNotFinished();
+        ValidateText(titleAr, titleEn, descriptionAr, descriptionEn);
+
+        if (newGoalAmount <= 0)
+            throw new DomainException("Campaign goal amount must be strictly greater than zero.");
+
+        if (newGoalAmount < RaisedAmount)
+            throw new DomainException($"Cannot lower GoalAmount ({newGoalAmount:0.00}) below already RaisedAmount ({RaisedAmount:0.00}).");
+
+        if (newEndDateUtc <= nowUtc)
+            throw new DomainException("New end date must be strictly in the future.");
+
+        if (newCategoryId == Guid.Empty)
+            throw new DomainException("CategoryId cannot be empty.");
+
+        TitleAr = titleAr.Trim();
+        TitleEn = titleEn.Trim();
+        DescriptionAr = descriptionAr.Trim();
+        DescriptionEn = descriptionEn.Trim();
+        GoalAmount = decimal.Round(newGoalAmount, 2, MidpointRounding.AwayFromZero);
+        EndDate = newEndDateUtc;
+        CategoryId = newCategoryId;
+        UpdatedAt = nowUtc;
+    }
+
     public void UpdateDetails(
         string titleAr,
         string titleEn,

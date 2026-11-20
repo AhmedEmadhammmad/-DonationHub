@@ -1,5 +1,6 @@
 using DonationHub.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace DonationHub.Application.Common.Interfaces;
 
@@ -16,6 +17,11 @@ public interface IAppDbContext
     DbSet<PaymentAttempt> PaymentAttempts { get; }
     DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; }
     DbSet<IdempotencyRecord> IdempotencyRecords { get; }
+
+    /// <summary>
+    /// Provides access to change tracking information and operations for an entity.
+    /// </summary>
+    EntityEntry<TEntity> Entry<TEntity>(TEntity entity) where TEntity : class;
 
     /// <summary>
     /// Persists tracked changes directly through the context.

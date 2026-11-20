@@ -1,30 +1,23 @@
-using DonationHub.Application.Common.Exceptions;
+using DonationHub.Api.Extensions;
+using DonationHub.Application.Features.Categories.CreateCategory;
+using DonationHub.Application.Features.Categories.DeleteCategory;
 using DonationHub.Application.Features.Categories.Dtos;
-using DonationHub.Application.Features.Categories.Services;
+using DonationHub.Application.Features.Categories.GetCategories;
+using DonationHub.Application.Features.Categories.GetCategoryById;
+using DonationHub.Application.Features.Categories.UpdateCategory;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 
 namespace DonationHub.Api.Controllers;
 
 /// <summary>
-/// Exposes endpoints for managing and retrieving campaign categories.
+/// Exposes endpoints for managing and retrieving campaign categories via CQRS slices.
 /// </summary>
 [ApiController]
 [Route("api/v1/categories")]
-public class CategoriesController : ControllerBase
+public class CategoriesController(ISender mediator) : ControllerBase
 {
-    private readonly ICategoryService _categoryService;
-
-    /// <summary>
-    /// Initializes CategoriesController with the category application service.
-    /// </summary>
-    public CategoriesController(ICategoryService categoryService)
-    {
-        _categoryService = categoryService ?? throw new ArgumentNullException(nameof(categoryService));
-    }
-
     /// <summary>
     /// Creates a new category under administrator authorization (CAT-01 / CAT-02).
     /// </summary>
@@ -35,29 +28,15 @@ public class CategoriesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryRequestDto request, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateCategory(
+        [FromBody] CreateCategoryCommand command,
+        CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await _categoryService.CreateCategoryAsync(request, cancellationToken);
-            return CreatedAtAction(nameof(GetCategoryById), new { id = result.Id }, result);
-        }
-        catch (CategoryDuplicateNameException ex)
-        {
-            return Conflict(new
-            {
-                error = CategoryDuplicateNameException.ErrorCode,
-                message = ex.Message
-            });
-        }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
-        {
-            return Conflict(new
-            {
-                error = CategoryDuplicateNameException.ErrorCode,
-                message = "A category with the same Arabic or English name already exists."
-            });
-        }
+        var result = await mediator.Send(command, cancellationToken);
+        return result.ToCreatedAtActionResult(
+            this,
+            nameof(GetCategoryById),
+            new { id = result.IsSuccess ? result.Value.Id : Guid.Empty });
     }
 
     /// <summary>
@@ -66,35 +45,18 @@ public class CategoriesController : ControllerBase
     [HttpGet]
     [AllowAnonymous]
     [ProducesResponseType(typeof(IReadOnlyList<CategoryDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetCategories(CancellationToken cancellationToken)
-    {
-        var result = await _categoryService.GetCategoriesAsync(cancellationToken);
-        return Ok(result);
-    }
+    public async Task<IActionResult> GetCategories(CancellationToken cancellationToken) =>
+        (await mediator.Send(new GetCategoriesQuery(), cancellationToken)).ToActionResult(this);
 
     /// <summary>
     /// Retrieves a single category by identifier (CAT-03).
     /// </summary>
-    [HttpGet("{id:guid}")]
+    [HttpGet("{id:guid}", Name = nameof(GetCategoryById))]
     [AllowAnonymous]
     [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetCategoryById(Guid id, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _categoryService.GetCategoryByIdAsync(id, cancellationToken);
-            return Ok(result);
-        }
-        catch (CategoryNotFoundException ex)
-        {
-            return NotFound(new
-            {
-                error = CategoryNotFoundException.ErrorCode,
-                message = ex.Message
-            });
-        }
-    }
+    public async Task<IActionResult> GetCategoryById(Guid id, CancellationToken cancellationToken) =>
+        (await mediator.Send(new GetCategoryByIdQuery(id), cancellationToken)).ToActionResult(this);
 
     /// <summary>
     /// Updates category details under administrator authorization (CAT-01 / CAT-02).
@@ -107,37 +69,20 @@ public class CategoriesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> UpdateCategory(Guid id, [FromBody] UpdateCategoryRequestDto request, CancellationToken cancellationToken)
+    public async Task<IActionResult> UpdateCategory(
+        Guid id,
+        [FromBody] UpdateCategoryRequestDto request,
+        CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await _categoryService.UpdateCategoryAsync(id, request, cancellationToken);
-            return Ok(result);
-        }
-        catch (CategoryNotFoundException ex)
-        {
-            return NotFound(new
-            {
-                error = CategoryNotFoundException.ErrorCode,
-                message = ex.Message
-            });
-        }
-        catch (CategoryDuplicateNameException ex)
-        {
-            return Conflict(new
-            {
-                error = CategoryDuplicateNameException.ErrorCode,
-                message = ex.Message
-            });
-        }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
-        {
-            return Conflict(new
-            {
-                error = CategoryDuplicateNameException.ErrorCode,
-                message = "A category with the same Arabic or English name already exists."
-            });
-        }
+        var command = new UpdateCategoryCommand(
+            id,
+            request.NameAr,
+            request.NameEn,
+            request.DescriptionAr,
+            request.DescriptionEn);
+
+        var result = await mediator.Send(command, cancellationToken);
+        return result.ToActionResult(this);
     }
 
     /// <summary>
@@ -150,32 +95,6 @@ public class CategoriesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> DeleteCategory(Guid id, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _categoryService.DeleteCategoryAsync(id, cancellationToken);
-            return NoContent();
-        }
-        catch (CategoryNotFoundException ex)
-        {
-            return NotFound(new
-            {
-                error = CategoryNotFoundException.ErrorCode,
-                message = ex.Message
-            });
-        }
-        catch (CategoryHasCampaignsException ex)
-        {
-            return Conflict(new
-            {
-                error = CategoryHasCampaignsException.ErrorCode,
-                message = ex.Message
-            });
-        }
-    }
-
-    private static bool IsUniqueViolation(DbUpdateException ex)
-        => ex.InnerException is SqlException { Number: 2601 or 2627 };
+    public async Task<IActionResult> DeleteCategory(Guid id, CancellationToken cancellationToken) =>
+        (await mediator.Send(new DeleteCategoryCommand(id), cancellationToken)).ToActionResult(this);
 }
-

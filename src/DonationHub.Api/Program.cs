@@ -1,5 +1,6 @@
 using System.Text;
 using DonationHub.Api.Extensions;
+using DonationHub.Api.Infrastructure;
 using DonationHub.Api.Transformers;
 using DonationHub.Application;
 using DonationHub.Application.Common.Options;
@@ -11,7 +12,14 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Register strongly-typed options with fail-fast startup validation (Task 6)
+// Register TimeProvider for deterministic time calculation and unit testing (Sprint 2 Task 2)
+builder.Services.AddSingleton(TimeProvider.System);
+
+// Register Global Exception Handling and RFC 9457 ProblemDetails (Sprint 2 Task 6)
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
+// Register strongly-typed options with fail-fast startup validation (Sprint 1 Task 6)
 builder.Services.AddOptions<JwtOptions>()
     .BindConfiguration(JwtOptions.SectionName)
     .ValidateDataAnnotations()
@@ -63,7 +71,8 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+
+// Configure OpenAPI 3.1 with Bearer Security Scheme Transformer
 builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
@@ -71,13 +80,16 @@ builder.Services.AddOpenApi(options =>
 
 var app = builder.Build();
 
+// Global Exception Handler Middleware (RFC 9457 ProblemDetails)
+app.UseExceptionHandler();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference(options =>
     {
-        options.WithTitle("DonationHub API - Sprint 1")
+        options.WithTitle("DonationHub API - Sprint 2")
                .EnablePersistentAuthentication()
                .AddHttpAuthentication("Bearer", auth => auth.WithToken(string.Empty));
     });

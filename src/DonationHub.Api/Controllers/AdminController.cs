@@ -1,31 +1,20 @@
-using DonationHub.Application.Common.Exceptions;
+using DonationHub.Api.Extensions;
+using DonationHub.Application.Features.Auth.CreateStaff;
 using DonationHub.Application.Features.Auth.Dtos;
-using DonationHub.Application.Features.Auth.Services;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 
 namespace DonationHub.Api.Controllers;
 
 /// <summary>
-/// Exposes administrative endpoints restricted to users with the Admin role.
+/// Exposes administrative endpoints restricted to users with the Admin role via CQRS commands.
 /// </summary>
 [ApiController]
 [Route("api/v1/admin")]
 [Authorize(Roles = "Admin")]
-public class AdminController : ControllerBase
+public class AdminController(ISender mediator) : ControllerBase
 {
-    private readonly IAuthService _authService;
-
-    /// <summary>
-    /// Initializes AdminController with the application authentication service contract.
-    /// </summary>
-    public AdminController(IAuthService authService)
-    {
-        _authService = authService ?? throw new ArgumentNullException(nameof(authService));
-    }
-
     /// <summary>
     /// Creates a privileged staff user account (Admin or CampaignManager) under administrator authorization (IDN-08).
     /// </summary>
@@ -35,32 +24,13 @@ public class AdminController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> CreateStaff([FromBody] CreateStaffRequestDto request, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateStaff(
+        [FromBody] CreateStaffCommand command,
+        CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await _authService.CreateStaffAsync(request, cancellationToken);
-            return StatusCode(StatusCodes.Status201Created, result);
-        }
-        catch (DuplicateEmailException ex)
-        {
-            return Conflict(new
-            {
-                error = DuplicateEmailException.ErrorCode,
-                message = ex.Message
-            });
-        }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
-        {
-            return Conflict(new
-            {
-                error = DuplicateEmailException.ErrorCode,
-                message = "A user with the specified email address already exists."
-            });
-        }
+        var result = await mediator.Send(command, cancellationToken);
+        return result.IsSuccess
+            ? StatusCode(StatusCodes.Status201Created, result.Value)
+            : result.ToActionResult(this);
     }
-
-    private static bool IsUniqueViolation(DbUpdateException ex)
-        => ex.InnerException is SqlException { Number: 2601 or 2627 };
 }
-

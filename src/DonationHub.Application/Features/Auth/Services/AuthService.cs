@@ -15,7 +15,7 @@ public class AuthService : IAuthService
 {
     private readonly IAppDbContext _context;
     private readonly IGenericRepository<ApplicationUser> _userRepository;
-    private readonly IGenericRepository<RefreshToken> _refreshTokenRepository;
+    private readonly IGenericRepository<Domain.Entities.RefreshToken> _refreshTokenRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenService _tokenService;
@@ -27,7 +27,7 @@ public class AuthService : IAuthService
     public AuthService(
         IAppDbContext context,
         IGenericRepository<ApplicationUser> userRepository,
-        IGenericRepository<RefreshToken> refreshTokenRepository,
+        IGenericRepository<Domain.Entities.RefreshToken> refreshTokenRepository,
         IUnitOfWork unitOfWork,
         IPasswordHasher passwordHasher,
         ITokenService tokenService,
@@ -117,7 +117,7 @@ public class AuthService : IAuthService
         var nowUtc = DateTime.UtcNow;
         var expiresAtUtc = nowUtc.AddDays(_jwtOptions.RefreshTokenExpiryDays);
 
-        var refreshToken = RefreshToken.Create(
+        var refreshToken = Domain.Entities.RefreshToken.Create(
             id: Guid.NewGuid(),
             userId: user.Id,
             tokenHash: tokenHash,
@@ -174,7 +174,7 @@ public class AuthService : IAuthService
         var newExpiresAtUtc = nowUtc.AddDays(_jwtOptions.RefreshTokenExpiryDays);
 
         // 6. Rotate atomically: only ONE concurrent request may claim the token (single-use)
-        var newRefreshToken = RefreshToken.Create(
+        var newRefreshToken = Domain.Entities.RefreshToken.Create(
             id: Guid.NewGuid(),
             userId: user.Id,
             tokenHash: newTokenHash,

@@ -1,183 +1,100 @@
 using System.Security.Claims;
-using DonationHub.Application.Common.Exceptions;
+using DonationHub.Api.Extensions;
 using DonationHub.Application.Features.Auth.Dtos;
-using DonationHub.Application.Features.Auth.Services;
+using DonationHub.Application.Features.Auth.GetCurrentUser;
+using DonationHub.Application.Features.Auth.Login;
+using DonationHub.Application.Features.Auth.Logout;
+using DonationHub.Application.Features.Auth.RefreshToken;
+using DonationHub.Application.Features.Auth.RegisterDonor;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 
 namespace DonationHub.Api.Controllers;
 
 /// <summary>
-/// Exposes authentication HTTP endpoints including registration, login, token refresh, revocation, and profile retrieval.
+/// Exposes authentication HTTP endpoints including registration, login, token refresh, revocation, and profile retrieval via CQRS.
 /// </summary>
 [ApiController]
 [Route("api/v1/auth")]
-public class AuthController : ControllerBase
+public class AuthController(ISender mediator) : ControllerBase
 {
-    private readonly IAuthService _authService;
-
-    /// <summary>
-    /// Initializes AuthController with the application authentication service contract.
-    /// </summary>
-    public AuthController(IAuthService authService)
-    {
-        _authService = authService ?? throw new ArgumentNullException(nameof(authService));
-    }
-
     /// <summary>
     /// Registers a new donor user account with default Donor role (IDN-01).
     /// </summary>
     [HttpPost("register")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(AuthUserDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Register([FromBody] RegisterRequestDto request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Register(
+        [FromBody] RegisterDonorCommand command,
+        CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await _authService.RegisterDonorAsync(request, cancellationToken);
-            return StatusCode(StatusCodes.Status201Created, result);
-        }
-        catch (DuplicateEmailException ex)
-        {
-            return Conflict(new
-            {
-                error = DuplicateEmailException.ErrorCode,
-                message = ex.Message
-            });
-        }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
-        {
-            return Conflict(new
-            {
-                error = DuplicateEmailException.ErrorCode,
-                message = "A user with the specified email address already exists."
-            });
-        }
+        var result = await mediator.Send(command, cancellationToken);
+        return result.IsSuccess
+            ? StatusCode(StatusCodes.Status201Created, result.Value)
+            : result.ToActionResult(this);
     }
 
     /// <summary>
     /// Authenticates credentials and issues signed access and refresh tokens (IDN-03).
     /// </summary>
     [HttpPost("login")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> Login([FromBody] LoginRequestDto request, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _authService.LoginAsync(request, cancellationToken);
-            return Ok(result);
-        }
-        catch (InvalidCredentialsException ex)
-        {
-            return Unauthorized(new
-            {
-                error = InvalidCredentialsException.ErrorCode,
-                message = ex.Message
-            });
-        }
-        catch (AccountDeactivatedException ex)
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                error = AccountDeactivatedException.ErrorCode,
-                message = ex.Message
-            });
-        }
-    }
+    public async Task<IActionResult> Login(
+        [FromBody] LoginCommand command,
+        CancellationToken cancellationToken) =>
+        (await mediator.Send(command, cancellationToken)).ToActionResult(this);
 
     /// <summary>
     /// Rotates a valid refresh token and issues a refreshed access/refresh pair (IDN-05/06).
     /// </summary>
     [HttpPost("refresh")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequestDto request, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _authService.RefreshTokenAsync(request, cancellationToken);
-            return Ok(result);
-        }
-        catch (InvalidRefreshTokenException ex)
-        {
-            return Unauthorized(new
-            {
-                error = InvalidRefreshTokenException.ErrorCode,
-                message = ex.Message
-            });
-        }
-        catch (AccountDeactivatedException ex)
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                error = AccountDeactivatedException.ErrorCode,
-                message = ex.Message
-            });
-        }
-    }
+    public async Task<IActionResult> Refresh(
+        [FromBody] RefreshTokenCommand command,
+        CancellationToken cancellationToken) =>
+        (await mediator.Send(command, cancellationToken)).ToActionResult(this);
 
     /// <summary>
-    /// Revokes an active refresh token upon user logout (IDN-07).
+    /// Revokes an authenticated refresh token to terminate session (IDN-07).
     /// </summary>
-    [Authorize]
     [HttpPost("logout")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Logout([FromBody] RefreshTokenRequestDto? request, CancellationToken cancellationToken)
-    {
-        if (request is not null && !string.IsNullOrWhiteSpace(request.RefreshToken))
-        {
-            await _authService.RevokeRefreshTokenAsync(request.RefreshToken, cancellationToken);
-        }
-
-        return NoContent();
-    }
+    public async Task<IActionResult> Logout(
+        [FromBody] LogoutCommand command,
+        CancellationToken cancellationToken) =>
+        (await mediator.Send(command, cancellationToken)).ToActionResult(this);
 
     /// <summary>
-    /// Retrieves user profile details for the currently authenticated caller (IDN-09).
+    /// Retrieves authenticated user profile details by identifier (IDN-09).
     /// </summary>
-    [Authorize]
     [HttpGet("me")]
+    [Authorize]
     [ProducesResponseType(typeof(AuthUserDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetCurrentUser(CancellationToken cancellationToken)
     {
-        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? User.FindFirstValue("sub");
-
-        if (string.IsNullOrWhiteSpace(userIdString) || !Guid.TryParse(userIdString, out var userId))
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdClaim, out var userId))
         {
-            return Unauthorized(new
-            {
-                error = "Auth.InvalidToken",
-                message = "User identifier claim is missing or invalid."
-            });
+            return Unauthorized();
         }
 
-        try
-        {
-            var profile = await _authService.GetCurrentUserProfileAsync(userId, cancellationToken);
-            return Ok(profile);
-        }
-        catch (AccountDeactivatedException ex)
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                error = AccountDeactivatedException.ErrorCode,
-                message = ex.Message
-            });
-        }
+        var result = await mediator.Send(new GetCurrentUserQuery(userId), cancellationToken);
+        return result.ToActionResult(this);
     }
-
-    private static bool IsUniqueViolation(DbUpdateException ex)
-        => ex.InnerException is SqlException { Number: 2601 or 2627 };
 }
